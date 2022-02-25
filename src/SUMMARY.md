@@ -17,7 +17,7 @@
 # 实例代码
 
 - [HelloWrold](./example_code/hello_example.md)
-- [官方仓库](./example_code/dfinity_examples.md)
+- [官方实例仓库](./example_code/dfinity_examples.md)
 - [社区开源项目](./example_code/opensource_community_projects.md)
 - [黑客马拉松项目](./example_code/hackathon_projects.md)
 - [代码实验室](./example_code/codelabs.md)
