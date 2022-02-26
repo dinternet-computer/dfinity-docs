@@ -76,21 +76,144 @@
 
 然而，这些`principal`有一些结构来编码特定的身份验证和授权行为。
 
-#### 
+####  特殊形式的 Pricipal
+
+在本段，`H`表示`SHA-224`，`·`表示二进制连接符，`|p|`表示`p`的字节长度。
+
+`identity`可以分为下面几类：
+
+1. 不透明`identity`：
+    由`IC`自动生成。
+    > 注意，通常情况下这类`identity`有`0x01`结尾，不过一般用户不用理会这类`identity`。
+2. 自认证的`identity`：
+    格式：`H(public_key) · 0x02`（一共29个字节）。
+3. 派生`identity`：
+    格式：`H(|registering_pricipal| · registering_pricipal · derivation_nonce) · 0x03`（一共29字节）。
+    当需要注册一个`identity`时，这些`identity`就会被特殊处理。无论谁注册一个`identity`都需要提供一个`derivation_nonce`，用这个`derivation_nonce`和注册者的`identity`一起`hash`，这样，每个用户就都有一个属于自己的`identity`空间。
+    > 注意，派生`identity`目前暂时未在本文档中明确使用，但它们可能会在内部或将来使用。
+4. 匿名`identity`：
+    以`0x04`结尾，用作匿名调用者的`identity`，用类`identity`能够免除签名来调用`IC`接口。
+    当`IC`创建一个新的`identity`（`fresh identity`）时，它永远不会创建一个自我验证的`identity`、一个匿名的`identity`或一个从罐头或用户派生的`identity`。
 
 #### Principal 的文本表示
 
+> 注意，`IC`接口实际上不是用文本表示的`pricipal`（总是用二进制格式的`principal`）
+
+现在，我们规定一个标准的、文本表示的`principal`————在任何需要的时候使用，比如打印`principal`到终端、显示到网页给用户、输出到日志文件、或者是用在代码中等等。
+
+对于二进制流`b`，它的文本表示是`Grouped(Base32(CRC32(b) · b))`：
+- `CRC32`：四字节的纠错码，`ISO 3309`和`ITU-T V.42`标准，详情查看[这里](https://www.w3.org/TR/2003/REC-PNG-20031110/#5CRC-algorithm)
+- `Base32`：一种编码方式，[RFC4648](https://tools.ietf.org/html/rfc4648#section-6)标准。
+- `Grouped`：一个函数，接收`ASCII`字符串，并且每隔5个字符插入一个`-`但是首尾永远不会有`-`分隔符。
+
+`principal`应该总是用小写字母的形式，但解析的时候不应该是大小写敏感的。
+
+因为`principal`的最大长度是`29`字节，所以`principal`的文本表示最大不超过`63`个字节（`10*5+3` + `10`个分隔符）。
+
+> 注意，一个`identity`为`0xABCD01`的罐头的校验码为`0x233FF206`（[在线计算器](https://crccalc.com/?crc=ABCD01&method=crc32&datatype=hex&outtype=hex)），所以最终文本格式的`identity`应该是`em77e-bvlzu-aq`。
+
+编码和解码`principal`的实例代码（可以直接复制到`bash`执行）：
+
+编码`principal`：
+
+``` bash
+function textual_encode() {
+  ( echo "$1" | xxd -r -p | /usr/bin/crc32 /dev/stdin; echo -n "$1" ) |
+  xxd -r -p | base32 | tr A-Z a-z |
+  tr -d = | fold -w5 | paste -sd'-' -
+}
+```
+
+解码`principal`：
+
+``` bash
+function textual_decode() {
+  echo -n "$1" | tr -d - | tr a-z A-Z |
+  fold -w 8 | xargs -n1 printf '%-8s' | tr ' ' = |
+  base32 -d | xxd -p | tr -d '\n' | cut -b9- | tr a-z A-Z
+}
+```
+
 ### Canister 生命周期
 
-#### Canister 的 Cycles
+`IC`上的去中心化应用又叫做罐头`canister`。概念上来说，一个罐头有下面几种状态：
+
+- 罐头`identity`（是一个`principal`）
+- 罐头的控制着`controller`（一个可为空的`principal`数组）
+- `Cycles`余额
+- 罐头的运行状态，可以是`running`、`stopping`、`stopped`
+- 保留资源
+
+一个罐头可以是空的（刚创建的时候），也可以是非空的，一个非空的罐头还有如下状态：
+
+- 以罐头格式组织的代码
+- 数据（内存，全局变量等）
+- 可能还有一些其它的数据用来实现`IC`（例如队列）
+
+可以通过[安装代码](https://smartcontracts.org/docs/interface-spec/index.html#ic-install_code)使罐头变成未空的状态，已安装代码的罐头也可以卸载代码。
+
+如果一个空的罐头收到响应时，该响应会被丢弃，就好像罐头在处理响应时被捕获一样。
+
+#### Canister 的`Cycles`
+
+`IC`区块链依赖`Cycles`管理它的资源。罐头使用`Cycles`来为它使用的资源付费。
+
+当一个罐头的`Cycles`被消耗到零时，它的状态会变为`deallocated`，这个下面两种情况是一样的效果：
+
+- 卸载这个罐头中的代码（IC method [uninstall_code](https://smartcontracts.org/docs/interface-spec/index.html#ic-uninstall_code)）
+- 设置该罐头的所有资源保留为零
+
+在这之后，罐头就是空的。充值之后就能重新安装。
+
+> 注意，一旦某个罐头被清空，它的`identity`、`Cycles`余额、控制者（`controller`）`identity`会被保留在`IC`长达十年，至于十年后会发生什么，我们还没决定好。
 
 #### Canister 的状态
 
+罐头的状态能够用来控制罐头是否去处理进来的请求：
+
+- `running`：正常处理进来的请求
+- `stopping`：进来的请求会被`IC`拒绝，但是正在返回的请求正常返回
+- `stopped`：进来的请求会被`IC`拒绝，并且此时`canister`没有正在返回的请求
+
+特殊情况：不管[管理员罐头](https://smartcontracts.org/docs/interface-spec/index.html#ic-management-canister)是什么状态，对它的请求都会被处理。
+
+可以在`stop_canister`函数和`start_canister`函数期间初始化罐头的操作者`controller`（查询罐头状态使用`canister_status`函数，罐头自己也能调用这个函数查询罐头的状态）。
+
+注意：此状态与罐头是否为空的问题正交：空罐头可以处于运行状态。但是调用一个空罐头还是会响应一个`reject`。
+
 ### 签名
+
+数字签名方案用于验证`IC`基础设施各个部分中的消息。签名是域分隔的（`domain separated`），这意味着每条消息都以一个字节字符串为前缀，该字节字符串对于签名的目的是唯一的。
+
+`IC`支持多种签名方案，下面的章节会详细给出。对于每一种方案，我们都指定在公钥中编码的数据（始终是`DER`编码，并指示要使用的方案）以及签名的形式（对于本规范的其余部分而言，它们是不透明的`blob`）。
+
+在所有情况下，签名的有效负载都是域分割符和消息的串联。本规范中对签名的所有使用都表示域分隔符，以唯一表示签名的目的。域分隔符在构造上是无前缀的，因为它们的第一个字节表示它们的长度。
 
 #### Ed25519 和椭圆曲线签名
 
+本方案支持普通的签名：
+
+- [`Ed25519`](https://ed25519.cr.yp.to/index.html)或者
+- `P-256`曲线上的[`ECDSA`](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-4.pdf)（也叫做`secp256r1`），使用`SHA-256`作为`hash`函数
+- 公钥必须对签名方案`Ed25519`或`ECDSA`有效，并且被编码为`DER`
+  - 查看[RFC 8410](https://tools.ietf.org/html/rfc8410)了解如果对`Ed25519`公钥进行`DER`编码
+  - 查看[RFC 5480](https://tools.ietf.org/rfc/rfc5480)了解如何对`ECDSA`公钥进行`DER`编码；对于曲线`secp256k1`，使用`OID 1.3.132.0.10`，这些点必须以未压缩的格式指定（即`0x04`后跟`x`和`y`的大端`32`字节编码）。
+- 签名是以`32`字节大端编码的`r`、`s`连接组成的。
+
 ### Web Authentication
+
+`web authentication`允许的签名方案是：
+
+- `P-256`曲线上的`ECDSA`，使用`SHA-256`作为`hash`函数
+- [RSA PKCS#1v1.5 (RSASSA-PKCS1-v1_5)](https://datatracker.ietf.org/doc/html/rfc8017#section-8.2)，同样使用`SHA-256`作为`hash`函数
+
+签名是通过使用有效负载作为`web authentication`断言中的挑战来做的。
+
+通过验证挑战字段是否包含有效负载的`basg64url`编码来检查签名，并且该签名在`authenticationatorData · SHA-256(utf8(clientDataJSON))`上进行验证，如[WebAuthen w3c](https://www.w3.org/TR/webauthn/#op-get-assertion)中所指定那样。
+
+- 公钥被编码为`DER`包装的`COSE`密钥。
+
+!! TODO
 
 ### Canister 签名
 
