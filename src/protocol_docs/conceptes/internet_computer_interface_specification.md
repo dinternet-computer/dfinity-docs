@@ -1,12 +1,12 @@
-# `Internet Computer`接口手册
+# `Internet Computer`接口手册（The Internet Computer Interface Specification）
 
-## 介绍
+## 介绍（Introduction）
 
 -----
 
 欢迎来到`Internet Computer`！我们之所以称`Internet Computer`为`Internet Computer`，是因为事实上`Internet Computer`是由无数的实实在在的物理计算机组成的区块链。阅读本节后，你将会看到一个开放的、世界范围内可用的计算机。如果仅仅是开发人员想在`Internet Computer`上开发去中心化的应用或者一般用户想使用`Internet Computer`上的去中心化应用，那可能只需要了解一点点`ICP`协议就行了（`Internet Computer Protocol`）。不过，感兴趣的开发者或任何人，都能一览`Internet Computer`的整个架构的任何细节特性
 
-### 目标用户
+### 目标用户（Target audience）
 
 本文档将从底层讲解`Internet Computer`的接口以及如何使用这些接口。
 
@@ -20,13 +20,13 @@
 
 > 注意，本文档是严格的、技术性的文档，它不是`Internet Computer`的介绍文档，如果有需要，请先阅读`Internet Computer`的高级文档。
 
-### 本文档涉及的范围
+### 本文档的范围（Scope of this document）
 
 如果你能够将`Internet Computer`视做一个执行`WebAssembly`的分布式引擎，那本文档就是讲述如何运行这些`Webassembly`的。为了文档的可扩展性，本节不会涉及共识协议、节点、子网、正交一致性和治理。
 
 本文档尝试达到与实现无关：它能帮助你实现一个与`Internet Computer Protocol`兼容的新的`Internet Computer`。这意味着本文档不包含与运行`Internet Computer`相关的接口（例如数据中心运营商、协议开发者、治理用户），因为节点的更新、监控、日志记录等话题与实际实施及其架构有着内在的紧要联系。
 
-### `Internet Computer`的整体架构
+### `Internet Computer`的整体架构（Overview of the Internet Computer）
 
 `Internet Computer`（缩写为`IC`）上的去中心化应用`Dapp`，是通过罐头智能合约（`canister smart contracts`，缩写为`canister`，又叫罐头）实现的。如果你想在`IC`上部署一个智能合约，首先需要创建一个包含`WebAssembly`代码和配置文件的罐头`canister`，然后通过[Http 接口](https://smartcontracts.org/docs/interface-spec/index.html#http-interface)将它部署到`IC`网络上。最方便的方式就是通过`Motoko`语言开发`canister`然后通过`dfx`直接部署到`IC`；当然你也能够制作并使用自己的工具来开发和部署`canister`，[canister模块是怎样的](https://smartcontracts.org/docs/interface-spec/index.html#canister-module-format)和[为什么WebAssembly代码能和IC交互](https://smartcontracts.org/docs/interface-spec/index.html#system-api)这两节讲述了如何做。
 
@@ -36,7 +36,7 @@
 
 ![img](../../assets/images/a.svg "img")
 
-### 命名法
+### 命名法（Nomenclature）
 
 为了达成一致，我们定义一下词汇：
 
@@ -56,13 +56,13 @@
 
 `canister`和`user`都被`principal`标识区分，有时候又叫做`id`。
 
-## 共同的概念
+## 共同的概念（Pervasive concepts）
 
 -----
 
 在详细介绍四大部分接口之前（即`agent`使用的[Http接口](https://smartcontracts.org/docs/interface-spec/index.html#http-interface)，`canister`使用的[System API](https://smartcontracts.org/docs/interface-spec/index.html#system-api)、[virtual Management canister](https://smartcontracts.org/docs/interface-spec/index.html#ic-management-canister)、[System State Tree](https://smartcontracts.org/docs/interface-spec/index.html#state-tree)），本节讲述这些接口之前的相同部分。
 
-### 缺省常量和限制
+### 缺省常量和限制（Unspecified constants and limits）
 
 本规范可能会应用某些常量和限制，但尚未指定它们的具体值，即使它们的实现是已经定义好的。许多资源的限制仅与指定`IC`的错误处理行为相关（如上所述，本文档中还没有准确描述）。此列表还不完整：
 
@@ -70,13 +70,13 @@
 - `MAX_CYCLES_PER_RESPONSE`：在`canister`执行调用时，预留出来的最小`Cycles`，在调用执行之后从`canister`余额扣除，用于处理`response`，多余的`Cycles`会退还。详情查看[Message执行](https://smartcontracts.org/docs/interface-spec/index.html#rule-message-execution)。
 - `MAX_CANISTER_BALANCE`：一个`canister`最大的`Cycles`余额，大于2^128的值会被丢弃。
 
-### Principal
+### 主体（Principals）
 
 `principal`是`canister`、`user`和其它未来可能的概念的通用标识符。就`IC`的大多数用途而言，`principal`是长度从`0`到`29`字节的不透明的二进制`blob`，没有什么特别的机制区分`canister`和`user`的`principal`。
 
 然而，这些`principal`有一些结构来编码特定的身份验证和授权行为。
 
-####  特殊形式的 Pricipal
+####  特殊形式的主题（Special forms of Principals）
 
 在本段，`H`表示`SHA-224`，`·`表示二进制连接符，`|p|`表示`p`的字节长度。
 
@@ -95,7 +95,7 @@
     以`0x04`结尾，用作匿名调用者的`identity`，用类`identity`能够免除签名来调用`IC`接口。
     当`IC`创建一个新的`identity`（`fresh identity`）时，它永远不会创建一个自我验证的`identity`、一个匿名的`identity`或一个从罐头或用户派生的`identity`。
 
-#### Principal 的文本表示
+#### 主题的文本表示（Textual representation of principals）
 
 > 注意，`IC`接口实际上不是用文本表示的`pricipal`（总是用二进制格式的`principal`）
 
@@ -134,7 +134,7 @@ function textual_decode() {
 }
 ```
 
-### Canister 生命周期
+### 罐头的生命周期（Canister lifecycle）
 
 `IC`上的去中心化应用又叫做罐头`canister`。概念上来说，一个罐头有下面几种状态：
 
@@ -154,7 +154,7 @@ function textual_decode() {
 
 如果一个空的罐头收到响应时，该响应会被丢弃，就好像罐头在处理响应时被捕获一样。
 
-#### Canister 的`Cycles`
+#### 罐头的燃料（Canister cycles）
 
 `IC`区块链依赖`Cycles`管理它的资源。罐头使用`Cycles`来为它使用的资源付费。
 
@@ -167,7 +167,7 @@ function textual_decode() {
 
 > 注意，一旦某个罐头被清空，它的`identity`、`Cycles`余额、控制者（`controller`）`identity`会被保留在`IC`长达十年，至于十年后会发生什么，我们还没决定好。
 
-#### Canister 的状态
+#### 罐头的状态（Canister state）
 
 罐头的状态能够用来控制罐头是否去处理进来的请求：
 
@@ -181,7 +181,7 @@ function textual_decode() {
 
 注意：此状态与罐头是否为空的问题正交：空罐头可以处于运行状态。但是调用一个空罐头还是会响应一个`reject`。
 
-### 签名
+### 签名（Signatures）
 
 数字签名方案用于验证`IC`基础设施各个部分中的消息。签名是域分隔的（`domain separated`），这意味着每条消息都以一个字节字符串为前缀，该字节字符串对于签名的目的是唯一的。
 
@@ -189,7 +189,7 @@ function textual_decode() {
 
 在所有情况下，签名的有效负载都是域分割符和消息的串联。本规范中对签名的所有使用都表示域分隔符，以唯一表示签名的目的。域分隔符在构造上是无前缀的，因为它们的第一个字节表示它们的长度。
 
-#### Ed25519 和椭圆曲线签名
+#### Ed25519 和椭圆曲线签名（Ed25519 and ECDSA signatures）
 
 本方案支持普通的签名：
 
@@ -215,7 +215,7 @@ function textual_decode() {
 
 !! TODO
 
-### Canister 签名
+### 罐头签名（Canister signatures）
 
 ## 系统状态数（System state tree）
 
