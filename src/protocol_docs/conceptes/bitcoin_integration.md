@@ -12,4 +12,4 @@
 
 > 注意，一旦该功能在`IC`主网上可用，比特币功能将以虚拟罐头的形式在`IC`上运行，类似于`management canister`。`API`可能略有变化，但估计预览版和正式版之间基本保持不变，因此稍后切换到正式版时可能需要对罐头代码进行小的调整。
 
-有关集成的内部工作原理，请参见比特币集成的[wiki](https://wiki.internetcomputer.org/wiki/Bitcoin_integration)页面
+有关集成的内部工作原理，请参见比特币集成的[wiki](https://wiki.internetcomputer.org/wiki/Bitcoin_integration)页面。
