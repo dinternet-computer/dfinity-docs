@@ -16,7 +16,7 @@
 
 `IC`的另一个重要特征是它在一个去中心化的无许可治理系统的控制下运行，称为网络神经系统`NNS`，该系统完全链上运行。`NNS`可以就多个主题做出决策，包括通过创建新的子网、更新节点、配置`ICP`协议中使用的参数来扩展`IC`。任何人都可以参与治理并向`NNS`提交提案或对公开提案进行投票。为此，用户必须质押`ICP`代币并使用`NNS`创建一个神经元。
 
-## 开发下一代软件和服务（Building the next generation of software and services）
+## `IC`能开发下一代软件和服务（Building the next generation of software and services）
 
 ---- 
 
