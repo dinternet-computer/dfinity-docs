@@ -124,15 +124,16 @@
 
 # 协议文档
 
-- [Internet Computer是什么](./protocol_docs/conceptes/what_is_the_internet_computer.md)
-- [Internet Computer接口标准](./protocol_docs/conceptes/internet_computer_interface_specification.md)
-- [节点和子网](./protocol_docs/conceptes/nodes_and_subnetworks.md)
-- [去中心化数据中心](./protocol_docs/conceptes/decentralized_data_centers.md)
-- [罐头和代码](./protocol_docs/conceptes/canisters_and_code.md)
-- [罐头中的信任](./protocol_docs/conceptes/trust_in_canister.md)
-- [代币和Cycles](./protocol_docs/conceptes/tokens_and_cycles.md)
-- [神经元和治理](./protocol_docs/conceptes/neurons_and_governance.md)
-- [比特币集成](./protocol_docs/conceptes/bitcoin_integration.md)
+- [概念](./protocol_docs/conceptes/init.md)
+    - [Internet Computer是什么](./protocol_docs/conceptes/what_is_the_internet_computer.md)
+    - [Internet Computer接口标准](./protocol_docs/conceptes/internet_computer_interface_specification.md)
+    - [节点和子网](./protocol_docs/conceptes/nodes_and_subnetworks.md)
+    - [去中心化数据中心](./protocol_docs/conceptes/decentralized_data_centers.md)
+    - [罐头和代码](./protocol_docs/conceptes/canisters_and_code.md)
+    - [罐头中的信任](./protocol_docs/conceptes/trust_in_canister.md)
+    - [代币和Cycles](./protocol_docs/conceptes/tokens_and_cycles.md)
+    - [神经元和治理](./protocol_docs/conceptes/neurons_and_governance.md)
+    - [比特币集成](./protocol_docs/conceptes/bitcoin_integration.md)
 
 # 通用文档
 
