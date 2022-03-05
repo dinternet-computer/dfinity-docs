@@ -133,6 +133,126 @@
 
 ### `ICP`工具代币的基本属性（Basic properties for ICP utility tokens）
 
+`ICP`代币类似于其它管理去中心化网络（如比特币网络）的实用代币，但在重要方面也有所不同。
 
+`ICP`代币在以下方面与比特币相似：
 
+- 每个`ICP`代币可整除`10^8`次。
+- 从创世初始状态开始，所有交易都存储在`ledger`罐头中。
+- 代币是完全同质的。
+- 账户标识符为`32`个字节，大致相当于公钥的哈希值，可选地与一些额外的子账户说明符一起使用。
 
+`ICP`代币在以下方面与比特币不同：
+
+- 质押的参与者节点不适用工作量证明，而是使用阈值`BLS`签名的变体来就链的有效状态达成一致。
+- 任何事务都可以存储一个`8`字节的备忘录————`Rosetta API`使用此备忘录字段来存储区分事务的随机数。然而，该领域的其它用途是可能的。
+
+## 常见问题（Frequently asked questions）
+
+-----
+
+以下问题来自开发人员社区最常报告的问题和阻止程序，这些问题与`Rosetta API`与`IC`的集成有关。
+
+### `Rosetta`节点（The Rosetta node）
+
+#### 如何运行一个`Rosetta`节点？（How do I run an instance of the Rosetta node ?）
+
+一个简单的方法是使用`dfinity/rosetta-api`的`docker`镜像。一旦节点初始化并同步了所有区块，你就可以通过调用节点上的`Rosetta API`来执行查询和提交交易。该节点监听`8080`端口。
+
+#### 如何让`Rosetta`节点连接到`IC`主网？（How do I connect the Rosetta node to the mainnet ?）
+
+使用`--mainnet`和`--not-whiteisted`选项
+
+#### 如何知道`Rosetta`节点是否连接上了测试网？（How dow I know if the node has caught up with the testnet ?）
+
+检索`Rosetta API`的启动日志。将会有一个日志条目说`You are all caught up to block XX`。这条消息说明你已经同步了所有区块。
+
+#### 如何持久化同步块数据？（How to persist synced blocks data ?）
+
+将`/data`目录挂载到其它地方。
+
+#### `Rosetta`节点是否已经版本化？（Is the Rosetta node versioned ?）
+
+还没有。在发布之前，当我们推送到`dfinity/rosetta-api:latest`镜像时，通常是一个重大更新，我们会事先在我们的沟通渠道中宣布。
+
+我们将很快实现镜像的`nightly`镜像，`CI`将确保它在推送之前工作。除了最新的，这些镜像还将用构建日期标记，因此为了提高可重复性，可以使用特定日期标记的镜像而不是最新镜像。当`nightly`镜像可用时，我们将宣布。
+
+#### 我如何连接到主网而不是测试网？（How do I connect to the main net instead of the testnet ?）
+
+使用`--help`选项启动`dfinity/rosetta-api`，你可以看到它的所有附加选项。其中有`--canister-id`和`--ic-url`可以用于配置`ledger`罐头的地址。目前，它们默认使用测试地址。
+
+> 注意，主网暂未上线；它会在公示日期前一段时间上线，我们会将更新后的镜像推送到主网上，以确保你可以提前在主网上进行测试。
+
+### `ICP`特定的`Rosetta API`详细信息（ICP-specific Rosetta API details）
+
+#### 账户是如何生成和验证的？（How are accounts generated and verified ?）
+
+- 生成`ed25519`密钥对
+- 私钥用于签署交易
+- 公钥用于生成自我认证的主体`id`。有关更多信息，请参阅[这里](https://sdk.dfinity.org/docs/interface-spec/index.html#_principals)。
+- 对主体`id`进行哈希处理以生成账户地址
+
+#### 如何使用公钥生成其账户地址？（How to use the public key to generate its account address ?）
+
+- 使用`16`进制编码的`32`字节公钥调用[`/construction/derive`](https://www.rosetta-api.org/docs/ConstructionApi.html#constructionderive)端口。
+- 调用`jsvascript SDK`中的`pub_key_to_address`函数。
+
+#### 如何验证账户地址？（How to verify the checksum of an account address ?）
+
+- `16`进制解码后，前`4`个字节是地址其余部分的大端`CRC32`校验和。
+- 在`javascript SDK`中调用[`address_from_hex`](https://github.com/dfinity/rosetta-client#working-with-account-addresses)。如果校验和不匹配，则返回并出错。
+- [这里](https://gist.github.com/TerrorJack/d6c79b33e5b5d0f5d52f3a2c5cdacc60)是地址验证逻辑的`java`实现。
+
+#### `ed25519`的`signature_type`和`curve_type`是什么？（What are the signature_type and curve_type for ed25519 ?）
+
+- `signature_type`是`ed25519`
+- `curve_type`是`edwards25519`
+
+#### 什么类型的交易可以出现在一个区块中，它们意味着什么？（What kinds of transactions can appear in a block, and what do they mean ?）
+
+- 从`/block`接口查询的每个块都包含一个事务。请注意，`Rosetta API`调用中不支持某些操作，例如`burn`
+- 转账
+    - 操作0：类型`TRANSACTION`，从源账户中减去转账金额。
+    - 操作1：类型`TRANSACTION`，将相同的转账金额添加到目标账户中。
+    - 操作2：类型`FEE`，从源账户中减去小费。
+- 不要依赖上面的顺序，你可以在`/constrction/payloads`调用中重新排列它们，并且在解析块中的交易时，你应该检查交易类型和金额符号。
+- 铸造
+    - 操作0：类型`MINT`，将铸造金额添加到目标账户。
+- 燃烧
+    - 操作0：类型`BURN`，从目标账户中减去燃烧金额。
+- `status`的值总是`COMPLETED`，失败的交易不会出现在轮询区块中。
+
+#### 需要什么小费，我可以自定义小费吗？（What fee is needed? Can I customize the fee?）
+
+- 通过调用`/construction/metadata`接口，你可以获得推荐使用的小费。
+- 目前，`Suggested_fee`是一个常数，转账中指定的小费必须等于它。
+- 小费不适用于铸造或燃烧操作。
+
+#### 我如何知道一个交易是否被提交到了链上？（How do I know if then submitted transaction hit the chain?）
+
+- `Rosetta`服务器会在`/construction/submit`接口调用后等待一段时间，如果交易成功上链，它将被返回。
+- 如果账本出现错误，错误信息将在`/construction/submit`结果中可用。
+- `/construction/submit`调用仍有可能返回，但距离它到达链还有一段时间。你可以轮询最新的区块并搜索交易哈希。我们还实现了`/search/transaction`接口的一个子集，它允许在给定的哈希值的情况下搜索交易。
+- `5`分钟是最坏情况下的超时。
+- 不要使用`mempool`接口，它还是一个空的实现。
+
+#### 我可能会从`Rosetta API`调用中得到哪些类型的错误？（What kinds of errors might I get from Rosetta API?）
+
+- 成功调用总会返回`200`响应。
+- 失败调用总会返回`500`响应，带有包含更多信息的`JSON`负载，在`network/options`接口的调用结果中可以看到可能的`Rosetta`错误代码及其文本描述。
+
+#### 如何发送铸造或烧毁类型的交易？（How do I send Mint or Burn transaction?）
+
+- `Mint`是特权操作；我们目前不支持通过`Rosetta API`调用`Burn`操作。
+
+#### 如果多次提交相同的签名交易会发生什么？（What happends if the same signed transaction is submitted multiple times?）
+
+`ledger`罐头会拒绝重复的交易。只有第一笔交易会进入链。对于重复提交，`/construction/submit`接口会调用失败。
+
+#### 如何在不调用`Rosetta API`的情况下签名交易？（How to sign a transaction without calling Rosetta API?）
+
+`javascript SDK`包含离线签名逻辑的实现。这与内部实现细节密切相关，因此我们强烈建议你尽可能调用`/construction/combine`来签署交易。
+
+#### 如何配置入口时间段？（How to configure the ingress time period?）
+
+在`/construction/payloads`接口中，你可以添加一个或全部`ingress_start`或`ingress_end`字段来指定入口时间段。它们是`Unix`纪元以来的纳秒，并且必须在接下来的`24`小时内。这可以生成和签署交易，但将实际提交延迟到以后。
