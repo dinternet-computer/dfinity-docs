@@ -223,16 +223,16 @@
 - [TrieMap](./motoko_base_library/array.md)
 - [TrieSet](./motoko_base_library/array.md)
 
-# 经济继承
+# 经济集成
 
 - [Rosetta API文档](./finalcial_integration/rosetta_api_documentation/transfer_icp.md)
     - [发送ICP](./finalcial_integration/rosetta_api_documentation/transfer_icp.md)
     - [神经元生命周期](./finalcial_integration/rosetta_api_documentation/intoduction_neuron_lifecycle.md)
     - [质押ICP和管理神经元](./finalcial_integration/rosetta_api_documentation/stake_icp_and_manage_neurons.md)
     - [质押ICP的流程](./finalcial_integration/rosetta_api_documentation/tutorial_icp_staking_workflow.md)
-- [账户罐头智能合约](./finalcial_integration/ledger_canister_smart_contract/setup_ledger_locally.md)
-    - [在本地启动账户罐头](./finalcial_integration/ledger_canister_smart_contract/setup_ledger_locally.md)
-    - [账户罐头标准](./finalcial_integration/ledger_canister_smart_contract/ledger_specification.md)
+- [`ledger`罐头](./finalcial_integration/ledger_canister_smart_contract/setup_ledger_locally.md)
+    - [在本地启动`ledger`罐头](./finalcial_integration/ledger_canister_smart_contract/setup_ledger_locally.md)
+    - [`ledger`规范](./finalcial_integration/ledger_canister_smart_contract/ledger_specification.md)
 
 
 ------
