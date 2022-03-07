@@ -232,6 +232,7 @@
     - [质押ICP的流程](./finalcial_integration/rosetta_api_documentation/tutorial_icp_staking_workflow.md)
 - [`ledger`罐头](./finalcial_integration/ledger_canister_smart_contract/setup_ledger_locally.md)
     - [在本地启动`ledger`罐头](./finalcial_integration/ledger_canister_smart_contract/setup_ledger_locally.md)
+    - [部署你自己的代币](./finalcial_integration/ledger_canister_smart_contract/deploy_your_own_token.md)
     - [`ledger`规范](./finalcial_integration/ledger_canister_smart_contract/ledger_specification.md)
 
 
