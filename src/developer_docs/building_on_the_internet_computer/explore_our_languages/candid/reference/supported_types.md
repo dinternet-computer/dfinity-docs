@@ -1,40 +1,350 @@
 # 支持类型（Supported types）
 
+本节列出了`candid`支持的所有类型。对于每种类型，参考包括以下信息：
+
+- 类型语法和类型的文本表示的语法。
+- 每种类型的升级规则根据一个类型的可能子类型和超类型给出。
+- `Rust`、`Motoko`、`Javascript`中的对应类型。
+
+子类型是你可以将方法结果更改为的类型。超类型是你可以将方法参数更改为的类型。
+
+你应该注意，此参考仅列出了与每种类型相关的特定子类型和超类型。它不重复有关可应用于任何类型的子类型和超类型的常见信息。例如，引用没有将空列为子类型，因为它可以是任何其它类型的子类型。类似地，类型`reserved`和`opt t`未列为特定类型地超类型，因为它们是任何类型的超类型。有关`empty`、`reserved`和`opt t`类型的子类型化规则的详细信息，请参阅以下部分：
+
+- [`opt t`](#可空值type-opt-t)
+- [`reserved`](#reservedtype-reserved)
+- [`empty`](#emptytype-empty)
+
 ## 文本（Type `text`）
 
 -----
+
+`text`类型用于人类可读的文本。更准确地说，它的值是`unicode`序列（不包含`surrogate`部分）。
+
+**类型语法**：
+
+`text`
+
+**文本语法**：
+
+``` candid
+""
+"Hello"
+"Escaped characters: \n \r \t \\ \" \'"
+"Unicode escapes: \u{2603} is ☃ and \u{221E} is ∞"
+"Raw bytes (must be utf8): \E2\98\83 is also ☃"
+```
+
+**对应`motoko`的类型**：
+
+`Text`
+
+**对应`rust`的类型**：
+
+`String`或者`&str`
+
+**对应`javascript`的值**：
+
+`String`
 
 ## 二进制（Type `blob`）
 
 -----
 
+`blob`类型可用于二进制数据，即字节序列。使用`blob`类型编写的接口可以与使用`vec nat8`编写的接口互换。
+
+**类型语法**：
+
+`blob`
+
+**文本语法**：
+
+`blob <text>`
+
+其中`<text>`表示一个文本字，所有字符都表示它们的`utf8`编码，以及任意字节序列`\CA\FF\FE`。
+
+有关`text`类型的更多信息，请参阅[`text`类型](#文本type-text)。
+
+**子类型**：
+
+`vec nat8`以及`vec nat8`的所有子类型。
+
+**超类型**：
+
+`vec nat8`以及`vec nat8`的所有超类型。
+
+**对应`motoko`的类型**：
+
+`Blob`
+
+**对应`rust`的类型**：
+
+`Vec<u8>`或`&[u8]`
+
+**对应`javascript`的值**：
+
+`[1, 2, 3, 4, ...]`
+
 ## 自然数（Type `nat`）
 
 -----
+
+`nat`类型包含所有自然数（非负数）。它是无界的，可以表示任意大数。编码是`LEB128`，因此仍然可以有效地表示小数字。
+
+**类型语法**：
+
+`nat`
+
+**文本语法**：
+
+``` candid
+1234
+1_000_000
+0xDEAD_BEEF
+```
+
+**超类型**：
+
+`int`
+
+**对应`motoko`的类型**：
+
+`Nat`
+
+**对应`rust`的类型**：
+
+`candid::Nat`或`u128`
+
+**对应`javascript`的值**：
+
+`+BigInt(10000)`或者`10000n`
 
 ## 整数（Type `int`）
 
 -----
 
+`int`类型包含所有整数。它是无界的，可以表示任何大数或小数。编码是`SLEB128`，所以小数也能有效地表示。
+
+**类型语法**：
+
+`int`
+
+**文本语法**：
+
+``` candid
+1234
+-1234
++1234
+1_000_000
+-1_000_000
++1_000_000
+0xDEAD_BEEF
+-0xDEAD_BEEF
++0xDEAD_BEEF
+```
+
+**子类型**：
+
+`nat`
+
+**超类型**：
+
+`nat`
+
+**对应`motoko`的类型**：
+
+`Int`
+
+**对应`rust`的类型**：
+
+`candid::Int`或者`i128`
+
+**对应`javascript`的值**：
+
+`+BigInt(-10000)`或者`-10000n`
+
 ## 有限精度自然数和有限精度整数（Type `natN` and `intN`）
 
 -----
 
-## `32`为浮点数和`64`为浮点数（Type `float32` and `float64`）
+`nat8`、`nat16`、`nat32`、`nat64`、`int8`、`int16`、`int32`和`int64`类型表示具有这么多位表示的数字，并且可以在更多“低级”接口中使用。
+
+`natN`的范围是`{0 ... 2^N-1}`，`intN`的范围是`-2^(N-1) ... 2^(N-1)-1`。
+
+对于较小的值，`nat`比`nat64`更节省空间。
+
+**类型语法**：
+
+`nat8`、`nat16`、`nat32`、`nat64`、`int8`、`int16`、`int32`或者`int64`。
+
+**文本语法**：
+
+我们可以使用类型注解来区分不同的整数类型：
+
+``` candid
+100 : nat8
+-100 : int8
+(42 : nat64)
+```
+
+**对应`motoko`的类型**：
+
+`natN`默认情况下被翻译成`NatN`，但也能转换成`WordN`。
+
+`intN`被翻译成`IntN`。
+
+**对应`rust`的类型**：
+
+|长度|有符号|无符号|
+|----|-----|------|
+|`8`位|`i8`|`u8`|
+|`16`位|`i16`|`u16`|
+|`32`位|`i32`|`u32`|
+|`64`位|`i64`|`u64`|
+
+**对应`javascript`的值**：
+
+`8`位、`16`位、`32`位被翻译成`number`类型。
+
+`int64`和`nat64`被翻译成`BigInt`。
+
+## `32`位浮点数和`64`位浮点数（Type `float32` and `float64`）
 
 -----
+
+`float32`和`float64`类型表示单精度（`32`位）和双精度（`64`位）的`IEEE 754`浮点数。
+
+**类型语法**：
+
+`float32`、`float64`
+
+**文本语法**：
+
+与`int`相同的语法，加上浮点字面量表示如下：
+
+``` candid
+1245.678
++1245.678
+-1_000_000.000_001
+34e10
+34E+10
+34e-10
+0xDEAD.BEEF
+0xDEAD.BEEFP-10
+0xDEAD.BEEFp+10
+```
+
+**对应`motoko`的类型**：
+
+`float64`对应于`Float`。
+
+`float32`目前在`Motoko`中无法表示。不能从`Motoko`程序提供或使用`float32`的直接接口。
+
+**对应`rust`的类型**：
+
+`f32`、`f64`
+
+**对应`javascript`的值**：
+
+浮点数。
 
 ## 布尔值（Type `bool`）
 
 -----
 
+`bool`类型是一种逻辑数据类型，只能具有值`true`或`false`。
+
+**类型语法**：
+
+`bool`
+
+**文本语法**：
+
+`true`、`false`
+
+**对应`motoko`的类型**：
+
+`Bool`
+
+**对应`rust`的类型**：
+
+`bool`
+
+**对应`javascript`的值**：
+
+`true`、`false`
+
 ## 空值（Type `null`）
 
 -----
 
+`null`类型是值`null`的类型，因此是所有`opt t`类型的子类型。这也是使用`variant`对枚举建模时的惯用选择。
+
+**类型语法**：
+
+`null`
+
+**文本语法**：
+
+`null`
+
+**超类型**：
+
+所有`opt t`类型。
+
+**对应`motoko`的类型**：
+
+`Null`
+
+**对应`rust`的类型**：
+
+`()`
+
+**对应`javascript`的值**：
+
+`null`
+
 ## 向量（Type `vec` t）
 
 -----
+
+`vec`类型表示向量（序列`sequences`、列表`lists`、数组`arrays`）。`vec t`类型的值包含零个或多个`t`类型值的序列。
+
+**类型语法**：
+
+`vec bool`、`vec nat8`、`vec vec text`等等。
+
+**文本语法**：
+
+``` candid
+vec {}
+vec { "john@doe.com"; "john.doe@example.com" };
+```
+
+**子类型**：
+
+- 只要`t`是`t'`的子类型，`vec t`就是`vec t'`的子类型。
+- `blob`是`vec nat8`的子类型。
+
+**超类型**：
+
+- 只要`t`是`t'`的超类型，`vec t`就是`vec t'`的超类型。
+- `blob`是`vec nat8`的超类型。
+
+**对应`motoko`的类型**：
+
+`[T]`，其中`T`对应于`t`。
+
+**对应`rust`的类型**：
+
+`Vec<T>`或者`&[T]`，其中`T`对应于`t`。
+
+`vec t`能够被翻译为`BTreeSet`或者`HashSet`。
+
+`vec record { KeyType; ValueType }`能够被翻译为`BTreeMap`或`HashMap`。
+
+**对应`javascript`的值**：
+
+`Array`，例如，`[ "text", "text2", …​ ]`。
 
 ## 可空值（Type `opt` t）
 
@@ -91,6 +401,102 @@ opt opt "test"
 ## `record`（Type `record{ n : t, ... }`）
 
 ------
+
+`record`是标记值的集合。例如，以下代码为具有文本字段`street`、`city`、`country`和一个数字类型字段`zip_code`的`record`：
+
+``` candid
+type address = record {
+  street : text;
+  city : text;
+  zip_code : nat;
+  country : text;
+};
+```
+
+`record`类型声明中的字段顺序无关紧要。每个字段可以具有不同的类型（与`vec`不同）。记录字段的标签也可以是`32`位自然数，如下例所示：
+
+``` candid
+type address2 = record {
+  288167939 : text;
+  1103114667 : text;
+  220614283 : nat;
+  492419670 : text;
+};
+```
+
+事实上，文本标签被视为它们的字段的哈希值，顺便提一下，对于`candid`，`address`和`address2`是相同的类型。
+
+如果你省略标签，`candid`会自动分配按顺序增加的标签。此行为导致以下缩短的语法，通常用于表示对和元组。`record { text; text; opt bool }`。
+
+**类型语法**：
+
+``` candid
+record {}
+record { first_name : text; second_name : text }
+record { "name with spaces" : nat; "unicode, too: ☃" : bool }
+record { text; text; opt bool }
+```
+
+**文本语法**：
+
+``` candid
+record {}
+record { first_name = "John"; second_name = "Doe" }
+record { "name with spaces" = 42; "unicode, too: ☃" = true }
+record { "a"; "tuple"; null }
+```
+
+**子类型**：
+
+`record`的子类型是具有附加字段（任何类型）的`record`，其中某些字段的类型更改为子类型，或者删除了可选字段。但是，删除方法结果中的可选字段是一种不好的做法。你可以将字段的类型更改为`opt empty`，以指示不再使用该字段。
+
+**超类型**：
+
+`record`的超类型是删除了某些字段、某些字段的类型更改为超类型或添加了可选字段的`record`类型。
+
+后者允许你使用其它字段扩展`record`。使用旧接口的客户端不会在它们的`record`中包含该字段，该字段将解码为`null`。
+
+例如，如果你有一个需要`record`类型参数的函数：
+
+``` candid
+record { first_name : text; second_name : text; score : nat }
+```
+
+你可以将其演变为期望`record`类型的函数：
+
+``` candid
+record { first_name : text; score: int; country : opt text }
+```
+
+**相应的`Motoko`的类型**：
+
+如果`record`类型看起来可以被推导为元组（即从`0`开始的连续标签），则使用`Motoko`元组类型（例如`(T1, T2, T3)`）。否则，使用`Motoko`的`record`————`({first_name: Text, second_name: Text})`。
+
+如果字段名称是`Motoko`中的保留名称，则会附加下划线。所以`{if: bool}`对应于`{if_: Bool}`。
+
+如果`candid`的`record`的字段名不是有效的`Motoko`的标识符，则使用哈希代替：`{☃: bool}`对应于`{11272781: Boolean}`。‘
+
+**相应的`Rust`的类型**：
+
+使用宏`#[derive(CandidType, Deserialize)]`定义`struct`。你可以使用`#[serde(rename = "DifferentFieldName")]`重新定义域的名字。
+
+如果`record`的类型是元组，则可以翻译成元组类型，如`(T1, T2, T3)`。
+
+**相应的`javascript`的类型**：
+
+如果`record`类型是元组，则将值转换为数组，例如`["Candid", 42]`。
+
+否则转换为`record`对象。例如，
+
+``` javascript
+{ "first name": "Candid", age: 42 }
+```
+
+如果字段名是`hash`，我们使用`_hash_`替换原来的字段名，例如：
+
+``` javascript
+{ _1_: 42, "1": "test" }
+```
 
 ## `variant`（Type `variant{ n : t, ... }`）
 
