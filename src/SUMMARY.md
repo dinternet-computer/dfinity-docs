@@ -99,7 +99,7 @@
                 - [Motoko语法](./developer_docs/building_on_the_internet_computer/explore_our_languages/motoko/motoko_guide/motoko_grammar.md)
                 - [Motoko简要](./developer_docs/building_on_the_internet_computer/explore_our_languages/motoko/motoko_guide/concise_overview_of_motoko.md)
                 - [代码格式](./developer_docs/building_on_the_internet_computer/explore_our_languages/motoko/motoko_guide/motoko_style_guidelines.md)
-        - [Rust](./developer_docs/building_on_the_internet_computer/explore_our_languages/rust/hello_world_quick_start.md)
+        - [Rust](./developer_docs/building_on_the_internet_computer/explore_our_languages/rust/rust.md)
             - [HelloWorld](./developer_docs/building_on_the_internet_computer/explore_our_languages/rust/hello_world_quick_start.md)
             - [简单的计数器](./developer_docs/building_on_the_internet_computer/explore_our_languages/rust/simple_counter_tutorial.md)
             - [依赖](./developer_docs/building_on_the_internet_computer/explore_our_languages/rust/basic_dependency_tutorial.md)
