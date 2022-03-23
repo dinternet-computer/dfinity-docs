@@ -415,6 +415,271 @@ function textual_decode() {
 
 ### 随机数（IC method：raw_rand）
 
+## 证书（Certificate）
+
+------
+
+证书由下面的部分组成：
+
+- 一棵树
+- 树根哈希上的签名在某些公钥下有效。
+- 将该公钥链接到根公钥的可选委托。
+
+`IC`将通过颁发证书来证明状态树是部分状态树。可以通过用其根哈希替换子树来修剪状态树（产生一个新的且可能更小但仍然有效的证书），以仅包括与相关数据相关的路径，但仍保留足够的信息来恢复树根哈希。
+
+更正式地说，证书由以下数据结构描述：
+
+``` ad_hoc
+Certificate = {
+  tree : HashTree
+  signature : Signature
+  delegation : NoDelegation | Delegation
+}
+HashTree
+  = Empty
+  | Fork HashTree HashTree
+  | Labeled Label HashTree
+  | Leaf blob
+  | Pruned Hash
+Label = Blob
+Hash = Blob
+Signature = Blob
+```
+
+通过以下算法（使用委托中定义的check_delegation）对证书的信任根进行验证：
+
+``` ad_hoc
+verify_cert(cert) =
+  let root_hash = reconstruct(cert.tree)
+  let der_key = check_delegation(cert.delegation) // see section Delegations below
+  bls_key = extract_der(der_key)
+  verify_bls_signature(bls_key, cert.signature, domain_sep("ic-state-root") · root_hash)
+
+reconstruct(Empty)       = H(domain_sep("ic-hashtree-empty"))
+reconstruct(Fork t1 t2)  = H(domain_sep("ic-hashtree-fork") · reconstruct(t1) · reconstruct(t2))
+reconstruct(Labeled l t) = H(domain_sep("ic-hashtree-labeled") · l · reconstruct(t))
+reconstruct(Leaf v)      = H(domain_sep("ic-hashtree-leaf") · v)
+reconstruct(Pruned h)    = h
+
+domain_sep(s) = byte(|s|) · s
+```
+
+其中`H`是`SHA-256`哈希函数，
+
+``` ad_hoc
+verify_bls_signature : PublicKey -> Signature -> Blob -> Bool
+```
+
+是`BLS`签名验证函数，`ciphersuite BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_NUL_`。有关`BLS`公钥和签名的编码的详细信息，请参阅该文档，以及，
+
+``` ad_hoc
+extract_der : Blob -> Blob
+```
+
+实现公钥的`DER`解码，遵循`RFC4580`，算法使用`OID1.3.6.1.4.1.44668.5.3.1.2.1`，曲线使用`1.3.6.1.4.1.44668.5.3.2.1`。
+
+所有状态树都包括路径`/time`处的时间（请参阅时间）。获得带有状态树的证书的用户可以查看时间戳以防止处理过时的数据。
+
+### Lookup
+
+给定一棵（已验证）树，用户可以在给定路径获取值，该路径是标签（`blob`）序列。在本文档中，我们使用斜杠作为分割符来暗示性地编写路径；实际的编码实际上并没有使用斜杠作为分隔符。
+
+以下算法在证书中查找路径，并返回：
+
+- 值
+- `Absent`，如果保证原始状态树中不存在该值，
+- `Unknown`，如果此部分视图不包括有关此路径的信息，或者
+- `Error`，如果路径对此证书没有意义。
+
+``` ad_hoc
+lookup(path, cert) = lookup_path(path, cert.tree)
+
+lookup_path([], Empty) = Absent
+lookup_path([], Leaf v) = v
+lookup_path([], Pruned _) = Unknown
+lookup_path([], Labeled _ _) = Error
+lookup_path([], Fork _ _) = Error
+
+lookup_path(l::ls, tree) =
+  match find_label(l, flatten_forks(tree)) with
+  | Absent -> Absent
+  | Unknown -> Unknown
+  | Error -> Error
+  | Found subtree -> lookup_path ls subtree
+
+flatten_forks(Empty) = []
+flatten_forks(Fork t1 t2) = flatten_forks(t1) · flatten_forks(t2)
+flatten_forks(t) = [t]
+
+find_label(l, _ · Labeled l1 t · _)                | l == l1     = Found t
+find_label(l, _ · Labeled l1 _ · Labeled l2 _ · _) | l1 < l < l2 = Absent
+find_label(l,                    Labeled l2 _ · _) |      l < l2 = Absent
+find_label(l, _ · Labeled l1 _ )                   | l1 < l      = Absent
+find_label(l, [])                                                = Absent
+find_label(l, _)                                   
+```
+
+`IC`只会产生格式良好的状态树，而上述算法假设是格式良好的树。这些具有标签子树以严格的标签递增顺序出现的特性，并且不与叶子混合。更正式地说：
+
+``` ad_hoc
+well_formed(tree) =
+  (tree = Leaf _) ∨ (well_formed_forest(flatten_forks(tree)))
+
+well_formed_forest(trees) =
+  strictly_increasing([l | Label l _ ∈ trees]) ∧
+  ∀ Label _ t ∈ trees. well_formed(t) ∧
+  ∀ t ∈ trees ≠ Leaf _
+```
+
+### 代理（Delegation）
+
+根密钥可以将证书授权委托给其它密钥。
+
+根子网的证书没有委托字段。其它子网的证书包括一个委托，该委托本身就是证明子网列在根子网的状态树中的证书（请参阅子网信息），并显示其公钥。
+
+> 注意，嵌套证书本身通常不会再次包含委托，尽管代理没有理由强制执行该属性。
+
+``` ad_hoc
+Delegation =
+ Delegation {
+   subnet_id : Principal;
+   certificate : Certificate;
+ }
+```
+
+使用以下算法验证委托链，该算法还返回委托密钥（`DER`编码的`BLS`密钥）：
+
+``` ad_hoc
+check_delegations(NoDelegation) : public_bls_key =
+  return root_public_key
+check_delegations(Delegation d) : public_bls_key =
+  verify_cert(d.certificate)
+  return lookup(["subnet",d.subnet_id,"public_key"],d.certificate)
+```
+
+其中`root_public_key`是先验已知的根密钥。
+
+委托是有范围的，即，它们指示受委托子网可以为哪一组罐头主体进行认证。可以使用`lookup(["subnet", d.subnet_id, "canister_ranges"], d.certificate)`从委托`d`中获取该集合，它必须存在，并且按照子网信息中的描述进行编码。证书的各种应用描述了子网范围是否以及如何发挥作用。
+
+### 证书编码（Encoding of certificates）
+
+证书的二进制编码是根据以下`CDDL`的`CBOR`值。你也可以下载该文件。
+
+``` ad_hoc
+certificate = tagged<{
+  tree : hash-tree
+  signature : signature
+  ? delegation : delegation
+}>
+
+hash-tree =
+  tree-empty /
+  tree-fork /
+  tree-labeled /
+  tree-leaf /
+  tree-pruned
+
+; Trees are represented as CBOR arrays instead of records with textual field
+; labels, for conciseness
+tree-empty   = [ 0 ]
+tree-fork    = [ 1 hash-tree hash-tree ]
+tree-labeled = [ 2 bytes hash-tree ]
+tree-leaf    = [ 3 bytes ]
+tree-pruned  = [ 4 hash ]
+
+delegation = {
+  subnet_id : bytes
+  certificate: bytes
+}
+
+tagged<t> = #6.55799(t) ; the CBOR tag
+
+hash = bytes
+signature = bytes
+```
+
+系统状态树中的值被编码为`blob`，如下所示：
+
+- 自然数是`leb128`编码的。
+- 文本值是`UTF-8`编码的。
+- `blob`值按原样编码。
+
+**示例**
+
+考虑以下树形数据（所有单个字符串表示标签，所有其它表示值）
+
+``` ad_hoc
+─┬╴ "a" ─┬─ "x" ─╴"hello"
+ │       └╴ "y" ─╴"world"
+ ├╴ "b" ──╴ "good"
+ ├╴ "c"
+ └╴ "d" ──╴ "morning"
+```
+
+这个标记树的一个可能的哈希树可能是，其中`┬`表示一个分叉。这不是典型的编码（可以避免一侧带有`Empty`的分叉），但它是有效的。
+
+``` ad_hoc
+─┬─┬╴"a" ─┬─┬╴"x" ─╴"hello"
+ │ │      │ └╴Empty
+ │ │      └╴  "y" ─╴"world"
+ │ └╴"b" ──╴"good"
+ └─┬╴"c" ──╴Empty
+   └╴"d" ──╴"morning"
+```
+
+该树具有以下`CBOR`编码：
+
+``` cbor
+8301830183024161830183018302417882034568656c6c6f810083024179820345776f726c6483024162820344676f6f648301830241638100830241648203476d6f726e696e67
+```
+
+以及下面的根哈希：
+
+``` hash
+eb5c5b2195e62d996b84c9bcc8259d19a83786a2f59e0878cec84c811f669aa0
+```
+
+用以下路径修剪这棵树：
+
+``` ad_hoc
+/a/y
+/ax
+/d
+```
+
+这将导致这棵树（修剪子树由它们的哈希树表示）：
+
+``` ad_hoc
+─┬─┬╴"a" ─┬─ 1B4FEFF9BEF8131788B0C9DC6DBAD6E81E524249C879E9F10F71CE3749F5A638
+ │ │      └╴ "y" ─╴"world"
+ │ └╴"b" ──╴7B32AC0C6BA8CE35AC82C255FC7906F7FC130DAB2A090F80FE12F9C2CAE83BA6
+ └─┬╴EC8324B8A1F1AC16BD2E806EDBA78006479C9877FED4EB464A25485465AF601D
+   └╴"d" ──╴"morning"
+```
+
+请注意，包含`b`标签（没有内容）以证明不存在`/ax`路径。
+
+这棵树将`CBOR`编码为：
+
+``` cbor
+83018301830241618301820458201b4feff9bef8131788b0c9dc6dbad6e81e524249c879e9f10f71ce3749f5a63883024179820345776f726c6483024162820458207b32ac0c6ba8ce35ac82c255fc7906f7fc130dab2a090f80fe12f9c2cae83ba6830182045820ec8324b8a1f1ac16bd2e806edba78006479c9877fed4eb464a25485465af601d830241648203476d6f726e696e67
+```
+
+和（显然）相同的根哈希。
+
+在修剪后的树中，`lookup_path`函数的行为如下：
+
+``` ad_hoc
+lookup_path(["a", "a"], pruned_tree) = Unknown
+lookup_path(["a", "y"], pruned_tree) = Found "world"
+lookup_path(["aa"],     pruned_tree) = Absent
+lookup_path(["ax"],     pruned_tree) = Absent
+lookup_path(["b"],      pruned_tree) = Unknown
+lookup_path(["bb"],     pruned_tree) = Unknown
+lookup_path(["d"],      pruned_tree) = Found "morning"
+lookup_path(["e"],      pruned_tree) = Absent
+```
+
 ## 行为抽象（Abstract behavior）
 
 -----
