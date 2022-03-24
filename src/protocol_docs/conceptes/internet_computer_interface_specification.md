@@ -235,7 +235,100 @@ function textual_decode() {
 
 ------
 
-### 罐头调用的整体流程（Overview of canister calling）
+用户用来向`IC`发送请求的具体机制是通过`HTTPS API`，它公开了三个端点来处理交互，外加一个端点用户诊断：
+
+- `/api/v2/canister/<effective_canister_id>/call`：用户可以提交（异步、状态更改）调用。
+- `/api/v2/canister/<effective_canister_id>/read_state`：用户可以阅读有关`IC`的各种状态信息。特别是，他们可以在此处轮询调用的状态。
+- `/api/v2/canister/<effective_canister_id>/query`：用户可以执行（同步的、不改变状态的）查询调用。
+- `/api/v2/status`：用户可以检索有关`IC`的状态信息。
+
+其中，`<effective_canister_id>`是[有效的罐头`id`](https://smartcontracts.org/docs/interface-spec/index.html#textual-ids)的[文本表示](https://smartcontracts.org/docs/interface-spec/index.html#http-effective-canister-id)。
+
+对`/api/v2/canister/<effective_canister_id>/call`、`/api/v2/canister/<effective_canister_id>/read_state`和`/api/v2/canister/<effective_canister_id>/query`的请求是具有`CBOR`编码的请求主体的`POST`请求，它由一个身份验证信封（根据身份验证）和特定于请求的内容组成，如下所述：
+
+> 注意，本文档尚未说明如何查找`IC`的位置和端口。
+
+### 罐头调用概述（Overview of canister calling）
+
+用户通过调用罐头与`IC`进行交互。由于区块链协议的本质，它们不能立即采取行动，而只能延迟。此外，用户与之交谈的实际节点可能不诚实，或者由于其它原因，可能无法在途中获得请求。这意味着以下高级工作流程：
+
+1. 用户通过`HTTPS`接口提交调用。立即响应中没有返回有用的信息（因为这些信息无论如何都不可信）。
+2. 在一段时间内，`IC`表现得好像它不知道呼叫。
+3. `IC`询问目标罐头是否愿意接受此消息并执行处理它的费用。这将`Ingress`消息检查`API`用于正常调用。对于管理罐头的调用，[`IC`管理罐头中的规则](https://smartcontracts.org/docs/interface-spec/index.html#ic-management-canister)适用。
+4. 在某些时候，`IC`可能会接受处理呼叫并将其状态设置为已接受。这表明整个`IC`已收到呼叫并计划处理它（尽管如果`IC`处于高负载状态，它可能仍无法得到处理）。此外，用户还应该能够向任何端点询问未决呼叫的状态。
+5. 一旦明确调用将被执行（资源充足，调用尚未过期），状态将更改为处理中。现在用户可以保证请求会产生效果，例如它将到达目标罐头。
+6. `IC`正在处理呼叫。对于某些调用，这可能是原子的，对于其它调用，这涉及多个内部步骤。
+7. 最终，将产生响应，并且可以在一定的时间内检索。响应要么是回复，表示成功；要么是拒绝，表示某种形式的错误。
+8. 如果调用保留了足够长的时间，但请求还没有过期，`IC`可以忘记响应数据，只记住调用完成，以防止重放攻击。
+9. 一旦到期时间过去，`IC`可以修剪呼叫及其响应，并完全忘记它。
+
+这会产生以下交互图：
+
+![img](../../assets/images/sssss.svg "img")
+
+状态转换可能是瞬时的，并不总是外部可见的。例如，请求的状态可以从通过处理接收到一次性回复。类似的，`IC`可能根本不实现完成状态，并且将呼叫保持在已回复/拒绝状态，直到它们被修剪。
+
+所有灰色状态都没有明确表示在`IC`状态中，与“呼叫不存在”无法区分。
+
+接收状态的特征是调用已用过（可能是恶意的）端点进入`IC`的状态。现在再次提交（相同的）调用是没有意义的（但无害的）。在达到该状态之前，向其它节点提交相同的调用可能是防止恶意或行为不端节点的有用保护措施。
+
+处理状态的特征是调用的初始效果已经发生或将要发生。这最好用一个例子来解释：考虑一个计数器罐头。它导出一个增加计数器的方法`inc`。假设罐头没有逻辑错误，并且不会被强行移除。用户向`call inc`提交调用。如果用户看到请求状态正在处理，则保证会发生状态更改。用户可以停止监控状态，不必重试提交。
+
+`IC`或罐头可能会拒绝调用。在任何一种情况下，都不能保证调用的进度。
+
+为了避免重放攻击，从完成或接收到修剪的转换必须不早于调用的`ingress_expiry`字段。
+
+调用必须保持回复或拒绝足够长时间，以便轮询用户捕捉响应。
+
+当向`IC`轮询请求的状态或调用时，用户使用请求`ID`（请参阅[请求`ID`](https://smartcontracts.org/docs/interface-spec/index.html#request-id)）从状态树（请参阅[请求：读取状态](https://smartcontracts.org/docs/interface-spec/index.html#state-tree-request-status)）中读取请求状态（请参阅[请求状态](https://smartcontracts.org/docs/interface-spec/index.html#http-read-state)）。
+
+### 调用（Request: Call）
+
+为了调用罐头，用户向`/api/v2/canister/<effective_canister_id>/call`发出`POST`请求。请求正文由一个身份验证信封和一个内容映射组成，该内容映射具有以下字段：
+
+- `request_type (text)`：总是填`call`。
+- `sender`、`nonce`、`ingress_expiry`：请查看[认证](https://smartcontracts.org/docs/interface-spec/index.html#authentication)。
+- `canister_id (blob)`：被调用的罐头的主体`id`。
+- `method_name (text)`：被调用的方法。
+- `arg (blob)`：传递给该方法的参数。
+
+对此请求的`HTTP`响应具有空正文和`HTTP`状态`202`，或`HTTP`错误（`4xx`或`5xx`）。偏执的代理不应信任此响应，并使用`read_state`来确定调用的状态。
+
+此请求类型也可用于调用查询方法。如果用户想要获得经过认证的响应，他们可以选择这种方式，而不是通过下面更快、更便宜的请求：查询调用。
+
+> 注意，可以通过这种方式使用通过`IC`管理罐头公开的功能。
+
+### 读取状态（Request: Read state）
+
+为了读取部分系统状态树，用户向`/api/v2/canister/<effective_canister_id>/read_status`发出`POST`请求。请求正文由一个身份验证信封和一个`map`组成，该`map`具有如下字段：
+
+- `request_type (text)`：总是填`read_state`。
+- `sender`、`nonce`、`ingress_expiry`：请查看[认证](https://smartcontracts.org/docs/interface-spec/index.html#authentication)。
+- `paths`：路径列表，其中路径本身就是一个`blob`。
+
+对此请求的`HTTP`响应包含一个`CBOR`映射，其中包含以下字段：
+
+- `certificate (blob)`：一个[证书](https://smartcontracts.org/docs/interface-spec/index.html#certification)。
+  如果证书包含子网委托（可能是嵌套的），则`effective_canister_id`必须包含在每个委托的罐头`ID`范围内（请参阅[委托](https://smartcontracts.org/docs/interface-spec/index.html#certification-delegation)）。
+
+
+返回的证书显示其路径是请求路径列表的后缀所有值。即使没有明确要求，它也总是显示`/time`。
+
+所有请求的路径必须具有以下路径之一作为前缀：
+
+- `/time`：能够被任何人请求。
+- `/subnet`：能够被任何人请求。
+- `/request_status/<request_id>`：仅当状态树中不存在`/request_id/<request_id>`时才能读取，或者如果此`read_state`请求由与`<request_id>`引用的原始请求相同的发送者签名，并且原始请求的有效罐头`id`与`<effective_canister_id>`相匹配。
+- `/canister/<canister_id>/module_hash`：如果`<canister_id>`与`<effective_canister_id>`匹配，任何人都可以请求。
+- `/canister/<canister_id>/controllers`：如果`<canister_id>`与`<effective_canister_id>`匹配，任何人都可以请求。顺序可能因实施而异。
+
+请注意，此方法无法访问路径`/canister/<canister_id>/certified_data`；这些路径仅通过系统`API`暴露给罐头本身（请参阅[认证数据](https://smartcontracts.org/docs/interface-spec/index.html#system-api-certified-data)）。
+
+有关状态树的详细信息，请参阅[系统状态树](https://smartcontracts.org/docs/interface-spec/index.html#state-tree)。
+
+
+
+
 
 ### 调用请求（Request: call）
 
