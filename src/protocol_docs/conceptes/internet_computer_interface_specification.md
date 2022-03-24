@@ -326,27 +326,167 @@ function textual_decode() {
 
 有关状态树的详细信息，请参阅[系统状态树](https://smartcontracts.org/docs/interface-spec/index.html#state-tree)。
 
+### 查询请求（Request: call）
 
+查询调用是调用罐头的一种快速但不太安全的方法。只有被罐头显式标记为“查询方法”的方法才能以这种方式调用。
 
+为了对罐头进行查询调用，用户向`/api/v2/canister/<effective_canister_id>/query`发出`POST`请求。请求正文由一个身份验证信封和一个`map`组成，该`map`具有如下字段：
 
+- `request_type (text)`：总是填`query`。
+- `sender`、`nonce`、`ingress_expiry`：请参阅[认证](https://smartcontracts.org/docs/interface-spec/index.html#authentication)。
+- `canister_id (blob)`：被调用的罐头的`id`。
+- `method_name (text)`：被调用的方法。
+- `arg (blob)`：被调用的方法的参数。
 
-### 调用请求（Request: call）
+如果调用导致回复，则响应是具有以下字段的`CBOR`的`map`：
 
-### 读状态请求（Request: Read state）
+- `status (text)`：`replied`。
+- `reply`：带有字段`arg (blob)`的`CBOR`的`map`，其中包括响应数据。
 
-### 查询请求（Request: Query call）
+如果调用被拒绝，则响应是具有以下字段的`CBOR`的`map`：
+
+- `status (text)`：`rejected`。
+- `reject_code (nat)`：拒绝码（请参阅[拒绝码](https://smartcontracts.org/docs/interface-spec/index.html#reject-codes)）。
+- `reject_message (text)`：文本诊断信息。
+
+不改变罐头状态的罐头方法可以有效地执行。此方法提供了该功能，并直接在`HTTP`响应中返回罐头的响应。
 
 ### 有效的罐头`id`（Effective canister id）
 
+请求的`URL`路径中的`<effective_canister_id>`是请求的有效目的地。
+
+- 如果调用的是管理罐头`(aaaaa-aa)`，并且`arg`是`candid`编码的，其中第一个参数是具有主体类型的`canister_id`字段的`record`，则有效罐头`id`是该主体。
+- 如果调用的是管理罐头`(aaaaa-aa)`的`raw_rand`方法，则没有有效的罐头`id`。这意味着此方法不能由用户调用，只能通过罐头调用。
+- 如果调用管理罐头`(aaaaa-aa)`的`provisional_create_canister_with_cycles`方法，则任何主体都是此调用的有效罐头`id`。
+  > 注意，`IC`主网不支持`provisional_create_canister_with_cycles`。这意味着使用可能是现有罐头的有效罐头`ID`会导致请求被路由到相应子网上的节点并在那里产生错误相应，而使用不能是现有罐头`id`的有效罐头`id`会导致来自接收请求的节点的错误响应——任何一个都可以。
+  > 在`IC`协议（例如测试网）的多子网开发实例中，具有对`provisional_create_canister_with_cycles`（或可能类似的内部方法）的特权访问以及从罐头到子网的映射知识用户可以使用他们在用于将请求引导至特定子网的`URL`。
+  > 在本地罐头执行环境中，有效罐头`id`被忽略，因此可以使用`aaaaa-aa`。
+- 否则，有效罐头`id`必须是请求中的`canister_id`。
+
+> 注意，期望是用户端代理代码使用户和开发者免受此概念的影响，类似于`System API`。
+
 ### 认证（Authentication）
+
+通过`HTTPS`接口传入的所有请求都需要匿名或使用加密签名进行身份验证。为此，在所有情况下，`map`都存在以下字段：
+
+- `nonce (blob, optional)`：一个用户提供的随机数据。这可用于创建具有其它相同字段的不同请求。
+- `ingress_expiry (nat, required)`：请求有效性的上限，自`1970-01-01`以来以纳秒表示（如`ic0.time()`）。这避免了重放攻击：如果该时间已经过期，`IC`将不接收请求，或将请求从收到状态转变为状态处理。`IC`可能会拒绝该时间与实际时间差太远的请求。这同样适用于同步和异步请求（并且可以称为`request_expiry`）。
+- `sender (Principal, required)`：发出请求的用户。
+
+信封，即整体请求，具有以下的键：
+
+- `content (record)`：实际的请求内容。
+- `sender_pubkey (blob, optional)`：用于验证此请求的公钥。由于用户将来可能拥有多个密钥，因此该字段告诉`IC`使用哪个密钥。
+- `sender_delegation (map 数组, optional)`：一系列的委托，从`sender_pubkey`签名的委托开始，到与`sender_sig`相关的密钥委托的委托结束。
+- `sender_sig (blob, optional)`：验证此请求的签名。
+
+公钥必须验证发送者主体：
+
+- 如果委托人是从该公钥派生的自认证`id`，则公钥可以认证委托人（参见[特殊形式的委托人](https://smartcontracts.org/docs/interface-spec/index.html#id-classes)）。
+- 如果`sender`字段是匿名主体，则必须省略字段`sender_pubkey`、`sender_sig`、`sender_delegation`。如果`sender`字段不是匿名主体，则必须设置字段`sender_pubkey`和`sender_sig`。
+
+请求`ID`（参见[请求`ID`](https://smartcontracts.org/docs/interface-spec/index.html#request-id)）是根据内容记录计算的。这允许签名基于请求`id`，并按时签名和公钥在语义上不相关。
+
+字段`sender_pubkey`包含签名中描述的方案之一支持的公钥。
+
+可以将签名交易从一个密钥委托给另一个密钥。如果使用了委托，则`sender_delegation`字段包含一个委托数组，每个委托都是一个具有以下字段的`map`：
+
+- `delegation (map)`：具有如下字段的`map`：
+  - `pubkey (blob)`：[签名](https://smartcontracts.org/docs/interface-spec/index.html#signatures)一节中描述的公钥。
+  - `expiration (nat)`：自`1970-01-01`以来，委托的到期时间，以纳秒为单位，类似于上面的`ingress_expiry`字段。
+  - `target (canisterId 数组, optional)`：如果设置了此字段，则委托仅适用于发送到列表中罐头的请求。
+- `signature (blob)`：如签名中所述，在委托字段中包含的映射的`32`字节表示独立散列上的签名，使用`27`字节`\x1Aic-request-auth-delegation`作为域分隔符。
+  
+  对于数组中的第一个委托，此签名是使用与`sender_pubkey`字段中的公钥对应的密钥创建的，所有后续委托都使用与前一个委托中包含的公钥对应的密钥进行签名。
+
+委托字段（如果存在）不得包含超过四个委托。
 
 ### 结构化数据的表观`hash`（Representation-independent hashing of structured data）
 
+结构化数据，例如（递归）映射，通过签署与表示无关的数据散列进行身份验证。此哈希计算如下（在以下步骤中使用`SHA256`）：
+
+1. 对于`map`中存在的每个字段（即，确实省略了省略的可选字段）：
+  - 连接字段名称的哈希（在`ascii`编码中，没有中断`\x00`）和值的哈希（使用下面指定的编码）。
+2. 将这些串联从低到高排序。
+3. 连接已排序的元素，并对结果进行哈希处理。
+
+生成的`256`位（`32`字节）散列是与表示无关的散列。
+
+使用以下字段值编码为`blob`：
+
+- 二进制`blob`（`canister_id`、`arg`、`nonce`、`module`）按原样使用。
+- 字符串（`request_type`、`method_name`）以`utf-8`编码，结尾没有`\x00`。
+- 自然数（`compute_allocation`、`memory_allocation`、`ingress_expiry`）使用短形式的无符号`LEB128`编码进行编码。例如，`0`应该编码为单个字节`[0x00]`，而`624485`应编码为字节序列`[0xE5, 0x8E, 0x26]`。
+- 数组（`paths`）被编码为数组元素编码的哈希值的串联。
+- `map`（`sender_delegation`）通过递归计算与表示无关的哈希进行编码。
+
 ### 请求`ids`（Request ids）
+
+当在状态树中签署请求或查询请求的状态时，用户使用请求`id`标识请求，该请求`id`是原始请求的内容`map`的与标识无关的哈希。
+
+> 注意，请求`id`独立于请求的表示（目前只有`CBOR`），并且如果规范向请求类型添加更多可选字段，则不会更改。
+
+> 请求`id`的推荐文本表示是十六进制字符串，小写字母以`0x`为前缀。例如，请求`id`由字节`[00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 0A, 0B, 0C, 0D, 0E, 0F, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 1A, 1B, 1C, 1D, 1E, 1F]`应显示为`0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f`。
+
+
+示例计算（其中`H`表示`SHA256`，`·`表示`blob`连接：
+
+``` ad_hoc
+hash_of_map({ request_type: "call", canister_id: 0x00000000000004D2, method_name: "hello", arg: "DIDL\x00\xFD*"})
+ = H(concat (sort
+   [ H("request_type") · H("call")
+   , H("canister_id") · H("\x00\x00\x00\x00\x00\x00\x04\xD2")
+   , H("method_name") · H("hello")
+   , H("arg") · H("DIDL\x00\xFD*")
+   ]))
+ = H(concat (sort
+   [ 769e6f87bdda39c859642b74ce9763cdd37cb1cd672733e8c54efaa33ab78af9 · 7edb360f06acaef2cc80dba16cf563f199d347db4443da04da0c8173e3f9e4ed
+   , 0a3eb2ba16702a387e6321066dd952db7a31f9b5cc92981e0a92dd56802d3df9 · 4d8c47c3c1c837964011441882d745f7e92d10a40cef0520447c63029eafe396
+   , 293536232cf9231c86002f4ee293176a0179c002daa9fc24be9bb51acdd642b6 · 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+   , b25f03dedd69be07f356a06fe35c1b0ddc0de77dcd9066c4be0c6bbde14b23ff · 6c0b2ae49718f6995c02ac5700c9c789d7b7862a0d53e6d40a73f1fcd2f70189
+   ]))
+ = H(concat
+   [ 0a3eb2ba16702a387e6321066dd952db7a31f9b5cc92981e0a92dd56802d3df9 · 4d8c47c3c1c837964011441882d745f7e92d10a40cef0520447c63029eafe396
+   , 293536232cf9231c86002f4ee293176a0179c002daa9fc24be9bb51acdd642b6 · 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+   , 769e6f87bdda39c859642b74ce9763cdd37cb1cd672733e8c54efaa33ab78af9 · 7edb360f06acaef2cc80dba16cf563f199d347db4443da04da0c8173e3f9e4ed
+   , b25f03dedd69be07f356a06fe35c1b0ddc0de77dcd9066c4be0c6bbde14b23ff · 6c0b2ae49718f6995c02ac5700c9c789d7b7862a0d53e6d40a73f1fcd2f70189
+   ])
+ = 8781291c347db32a9d8c10eb62b710fce5a93be676474c42babc74c51858f94b
+```
 
 ### 拒绝码（Reject codes）
 
+在`IC`中未决的`API`请求或罐头间调用最终将导致回复（表示成功并携带数据）或拒绝（表示某种错误）。拒绝包含对错误进行分类的拒绝代码和希望有用的拒绝消息字符串。
+
+拒绝代码是以下枚举成员：
+
+- `SYS_FATAL`(1)：致命的系统错误，重试也没用。
+- `SYS_TRANSIENT`(2)：暂时的系统错误，重试也许有用。
+- `DESTINATION_INVALID`(3)：目的地址无效（例如罐头或者账户不存在）。
+- `CANISTER_REJECT`(4)：被罐头拒绝。
+- `CANISTER_ERROR`(5)：罐头发生错误（被捕获，无响应）。
+
+此枚举的符号名称在整个规范中使用，但在所有接口（`HTTPS API`、`System API`）上，它们都表示为上面列表中给出的正数。
+
+错误消息保证为字符串，即不是任意二进制数据。
+
+当罐头显式拒绝消息时，它们可以指定拒绝代码；它始终是`CANISTER_REJECT`，从这个意义上说，拒绝代码是值得信赖的：如果`IC`以`SYS_FATAL`拒绝响应，那么确实是`IC`发出了拒绝。
+
 ### 状态接口（Status endpoint）
+
+此外，`IC`提供了一个`API`端点来获取各种状态字段。
+
+``` text
+/api/v2/status
+```
+
+对于此接口，用户执行`GET`请求，并接收具有以下字段的`CBOR`值。`IC`可能包括额外的特定于实现的字段。
+
+- `ic_api_version`（字符串，强制）：标识支持的接口版本，即`IC`旨在支持的当前文档的版本，例如`0.8.1`。实现也可能返回`unversioned`以指示它不符合特定版本，例如在发布之间。
+
+- `impl_source`（字符串，可选）：按照源代码的规范位置（例如`https://github.com/dfinity/ic`）中的约定，标识`IC`协议的实现。
+
+- `impl_version`（字符串，可选）：如果用户正在与`IC`协议实现的分布版本进行交互，则这是版本号。对于非分布版本....
 
 ### `CBOR`编码的请求和响应（CBOR encoding of requests and responses）
 
