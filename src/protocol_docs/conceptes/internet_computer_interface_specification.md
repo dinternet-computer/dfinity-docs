@@ -490,29 +490,236 @@ hash_of_map({ request_type: "call", canister_id: 0x00000000000004D2, method_name
 
 ### `CBOR`编码的请求和响应（CBOR encoding of requests and responses）
 
+请求和响应在此处指定为具有命名字段并使用提示性人类可读语法的记录。然而，`HTTP`请求或响应正文中的实际格式是[`CBOR`](https://en.wikipedia.org/wiki/CBOR)。
+
+具体来说，它由一个主要类型为`6`（“语义标签”）和标签值`55799`（参见[`self-describe CBOR`](https://tools.ietf.org/html/rfc7049#section-2.4.5)，然后是一个`record`。
+
+请求由带有键`sender_sig`（一个`blob`）、`sender_pubkey`（一个`blob`）和`content`（一个`record`）的信封`record`组成。前两个是用于请求身份验证的元数据，而最后一个是请求的实际内容。
+
+使用以下编码：
+
+- 字符串：主要类型`3`（“文本字符串”）。
+- `Blob`：主要类型`2`（“字节字符串”）。
+- `Nat`：主要类型`0`（无符号整数），精度够就用无符号整数，否则就用[`Bignum`](https://tools.ietf.org/html/rfc7049#section-2.4.2)。
+- `Record`：主要类型`5`（`map`），`Record`里面的键通过主要类型`3`编码。
+- `array`：主要类型`4`。
+
+正如`CBOR`规范的“[创建基于`CBOR`的协议](https://tools.ietf.org/html/rfc7049#section-3)”部分所建议的那样，我们澄清：
+
+- 浮点数不能用于对整数进行编码。
+- `CBOR`的`map`中禁止重复键。
+
+一个典型的请求是（用`CBOR`诊断符号编写，可以在`cbor.me`上检查和转换）：
+
+``` ad_hoc
+55799({
+  "content": {
+    "request_type": "call",
+    "canister_id": h'ABCD01',
+    "method_name": "say_hello",
+    "arg": h'0061736d01000000'
+  },
+  "sender_sig": h'DEADBEEF',
+  "sender_pubkey": h'b7a3c12dc0c8c748ab07525b701122b88bd78f600c76342d27f25e5f92444cde'
+})
+```
+
 ### `CDDL`描述语言描述的请求和响应（CDDL description of requests and responses）
+
+[简明数据定义语言](https://tools.ietf.org/html/rfc8610)（`Concise Data Definition Language`即`CDDL`）是`CBOR`的数据描述语言。本节总结了传入和传出上述入口点的`CBOR`数据的格式。你也可以[下载该文件](https://smartcontracts.org/docs/interface-spec/_attachments/requests.cddl)。
+
+``` cddl
+; The "root type" of the CDDL file is a hack: We want to define multiple
+; types in one file (to shared common definitions), but CDDL requires a single
+; root type. So we just list the types defined here. This is a common CDDL idiom.
+start =
+  call-request /
+  read-state-request /
+  query-request /
+  read-state-response /
+  query-response
+
+; common wrappers
+
+tagged<t> = #6.55799(t) ; the CBOR tag
+
+envelope<t> = tagged<{
+  content: t
+  ? sender_pubkey: pubkey
+  ? sender_delegation: [*4 signed-delegation]
+  ? sender_sig: signature
+}>
+
+
+; A request as submitted to /api/v2/.../call
+call-request = envelope<call-request-content>
+call-request-content = {
+  request_type: "call"
+  ? nonce : bytes
+  ingress_expiry : timestamp
+  sender : principal
+  canister_id : principal
+  method_name : text
+  arg : bytes
+}
+
+; A request as submitted to /api/v2/.../read_state
+read-state-request = envelope<read-state-content>
+read-state-content = {
+  request_type: "read_state"
+  ? nonce : bytes
+  ingress_expiry : timestamp
+  sender : principal
+  paths: [* state-path]
+}
+
+state-path = [* path-label]
+path-label = bytes
+
+; The response, as returned from /api/v2/.../read_state
+read-state-response = tagged<{
+  certificate: bytes
+}>
+
+; A request as submitted to /api/v2/.../query
+query-request = envelope<query-content>
+query-content = {
+  request_type: "query"
+  ? nonce : bytes
+  ingress_expiry : timestamp
+  sender : principal
+  canister_id : principal
+  method_name : text
+  arg : bytes
+}
+
+; The response, as returned from /api/v2/.../query
+query-response = tagged<{
+  status: "replied"
+  reply: call-reply
+  //
+  status: "rejected"
+  reject_code: unsigned
+  reject_message: text
+}>
+
+call-reply = {
+  arg : bytes
+}
+
+; subnet delegations
+
+signed-delegation = {
+  delegation: {
+    pubkey: bytes
+    expiration: timestamp
+    ? targets: [* principal]
+  }
+  signature: bytes
+}
+
+; some common data types
+
+principal = bytes .size (0..29)
+
+pubkey = bytes
+signature = bytes
+timestamp = unsigned
+```
 
 ### 顺序保证（Ordering guarantees）
 
+罐头之间的各种消息的传递和执行顺序没有完全指定。`IC`提供的保证是两个罐头之间的函数调用按顺序执行，因此需要按顺序执行的罐头无需等待较早消息对罐头的响应，然后再向同一个罐头发送后续消息。
+
+更精确地说：
+
+- 任何两个罐头之间的方法调用都是按顺序传递的，就好像它们通过一个简单的`FIFO`队列进行通信一样。
+- 如果`WASM`函数在一次调用中对同一个罐头进行多次调用，它们会按照调用`ic0.call_perform`的顺序排队。
+- 响应（包括带有`ic0.msg_reply`的回复、带有`ic0.msg_reject`的显式拒绝、系统生成的错误响应）没有任何相对于彼此或方法调用的顺序保证。
+- 通过`HTTPS`接口提交的入口消息没有特定的顺序保证。
+
 ### 跨节点同步（Synchronicity acriss nodes）
+
+本文档将`IC`描述为具有可以修改和查询的单一全局状态。实际上，它由许多节点组成，这些节点可能并不完全同步。
+
+只要你与一个（诚实的）节点交谈，观察到的行为就会很好地连续。如果你向罐头发出更新（即状态变化）调用（例如碰撞计数器），并且节点`A`指示该调用已被执行，然后你向节点`A`发出查询调用，则`A`的响应保证为包括更新调用的效果（你将收到更新的计数器的值）。
+
+如果你随后（快速地）向节点`B`发出读取该计数器的值的请求，则`B`可能会根据罐头的旧的状态响应你的读取请求。
+
+一个相关的问题是查询调用没有经过认证，节点的响应可能不诚实。在这种情况下，用户可能希望通过查询多个节点并比较结果来获得更多保证。但是，（当前）无法查询特定状态。
+
+> 注意，应用程序可以解决这些问题。对于第一个问题，查询结果可以让用户知道是否收到了更新。对于第二个问题，即使无法使用[经过验证的数据](https://smartcontracts.org/docs/interface-spec/index.html#system-api-certified-data)，如果回复在某种意义上是单调的，那么用户可以在他们的交集中获得保证（例如，如果查询返回随着时间增长的事件列表，那么即使不同的节点返回不同的列表，用户可以在许多节点报告的那些事件中得到保证）。
 
 ## 罐头的组织格式（Canister module format）
 
 -----
 
+罐头模块只是二进制格式的[`WASM`模块](https://webassembly.github.io/spec/core/index.html)。
+
 ## 罐头的接口（System API）
 
 ----- 
 
+`System API`是正在运行的罐头和`IC`之间的接口。它允许罐头的`WASM`模块向用户（方法入口点）和`IC`（例如初始化）公开功能，并向罐头公开`IC`的功能（例如调用其它罐头）。因为`WASM`是相当低级的，它还解释了如何表达更高级别的概念（例如，二进制`blob`）。
+
+我们希望利用高级`WASM`功能，例如`WASM`主机引用。但由于它们尚未得到所有相关工具的支持，因此本节描述了一个不依赖主机引用的初始系统`API`。在[outlook: 使用主机引用](https://smartcontracts.org/docs/interface-spec/index.html#host-references)一节中，我们概述了`WASM`主机引用的一些建议用途。
+
 ### WASM 模块要求（WebAssembly module requirements）
+
+为了使`WASM`模块可用作罐头的代码，它需要符合以下要求：
+
+- 如果它导入一个内存，它必须从`env.memory`中导入它。在下文中，`WASM内存`指的是该内存。
+- 如果它导入一个表，它必须从`env.table`中导入它。在下文中，`WASM表`指的是该表。
+- 如果它在导入概述中列出，它可能只导入一个函数。
+- 它可能具有（`start`）函数。
+- 如果它导出了`canister_init`函数，那这个函数只能是`() -> ()`类型的。
+- 如果它导出了`canister_inspect_message`，那这个函数只能是`() -> ()`类型的。
+- 如果它导出了`canister_heartbeat`函数，那这个函数只能是`() -> ()`类型的。
+- 如果它导出了`canister_update <name>`或者`canister_query <name>`那这些函数只能是`() -> ()`类型的。
+- 除了上面允许的方法外，不能导出其它名称以`canister_`开头的函数。
+- 它可能不具有与自定义部分名称相同名称的`icp:public<name>`和`icp:private<name>`。
+- 除了`icp:public`和`icp:private`之外，它可能没有其它名称以前缀`icp:`开头的自定义部分。
+- `IC`可能会拒绝以下`WASM`模块：声明超过`6000`个函数，或声明超过`200`个全局变量或声明超过`16`个导出的自定义部分（带有前缀`icp:`的自定义部分名称），或导出的总大小自定义部分超过`1MB`。
 
 ### 数字表示（Interpretation of numbers）
 
+`WASM`数字模型（`i32`、`i64`）不指示数字是被解释为有符号还是无符号。除非另有说明，只要`System API`将它们解释为数字（例如内存指针、缓冲区偏移量、数组大小），它们将被解释为无符号数。
+
 ### 入口点（Entry points）
+
+罐头提供了`IC`在各种情况下调用的入口点：
+
+- 罐头可以导出名称为`canister_init`并键入`() -> ()`的函数。
+- `canister_pre_upgrade () -> ()`函数。
+- `canister_post_upgrade () -> ()`函数。
+- `canister_inspect_message () -> ()`函数。
+- `canister_heartbeat () -> ()`函数。
+- `canister_update <name> () -> ()`函数。
+- `canister_query <name> () -> ()`函数。
+- 罐头表可能包含`(env: i32) -> ()`类型的函数，这些函数可用作罐头间调用的回调。
+
+如果任何这些入口点的执行因任何原因被捕获，那么对`WASM`状态的所有更改，以及任何外部可见系统调用（如`ic0.msg_reply`、`ic0.msg_reject`、`ic0.call_perform`）的影响都将被丢弃。对于升级，此事务行为适合于整个`canister_pre_upgrade`和`canister_post_upgrade`。
 
 ### 罐头初始化（Canister initialization）
 
+如果存在`canister_init`，则这是`IC`调用的第一个导出的`WASM`函数。与罐头初始化调用（请参阅`IC`方法：`install_code`）一起传递的参数可以通过`ic0.msg_arg_data_size/copy`用于罐头。
+
+如果`canister_init`方法入口点返回，则`IC`假定罐头已完全实例化。如果`canister_init`方法被捕获，则罐头安装失败，并且罐头将恢复到其先前的状态（即安装时为空，或重新安装时为空）。
+
 ### 罐头升级（Canister upgrades）
+
+当罐头升级到新的`WASM`模块时，`IC`：
+
+- 在旧的实例上调用`canister_pre_upgrade`（如果存在），以使罐头有机会进行清理Q（例如，将数据移动到稳定的内存）。
+- 使用新的`WASM`状态实例化新模块，包括（`start`）的执行。
+- 在新实例上调用`canister_post_upgrade`（如果存在），传递`install_code`调用中提供的`arg`（`IC`方法`install_code`）。
+
+稳定的内存在整个过程中得到保存；任何其它`WASM`状态都被丢弃。
+
+在这些步骤中，不会调用旧罐头或新罐头的其它入口点。不调用新罐头的`canister_init`函数。
+
+这些步骤是原子的：如果`canister_pre_upgrade`或`canister_post_upgrade`被捕获，则升级失败，并且罐头恢复到以前的状态。否则，升级成功，旧实例被丢弃。
+
 
 ### 公共方法（Public methods）
 
