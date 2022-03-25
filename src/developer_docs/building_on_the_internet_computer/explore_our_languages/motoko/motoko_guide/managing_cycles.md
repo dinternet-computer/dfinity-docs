@@ -99,3 +99,68 @@ shared(msg) actor class PiggyBank(
 
 - 查询存钱罐的当前储蓄（函数`getSavings()`），或
 - 从储蓄中提取金额（函数（`withdraw(amount)`））。
+
+对调用者的限制由语句`assert(msg.caller == owner)`进行，其失败会导致封闭函数被捕获，而不会显示余额或转移任何燃料。
+
+任何调用者都可以存入一定数量的燃料，前提是存储不会超过容量，从而打破存钱罐。由于存款功能仅接受可用金额的一部分，因此存款超过限制的调用者将收到任何未接受的燃料的隐式退款。退款是自动的，并由`IC`基础设施确保执行。
+
+由于燃料的传输是单向的（从调用者到被调用者），检索燃料需要使用显式回调（`benefit`函数，由构造函数作为参数）。在这里，`withdraw`函数调用了`benefit`，但仅在将调用者验证为所有者之后，在回调中反转调用者和被调用者的关系，允许燃料“上游”流动。
+
+请注意，`PiggkBank`的所有者实际上可以提供一个回调来奖励不同于所有者的受益人。
+
+下面是所有者`Alice`可能如何使用`PiggyBank`的实例：
+
+``` motoko
+import Cycles = "mo:base/ExperimentalCycles";
+import Lib = "PiggyBank";
+
+actor Alice {
+
+  public func test() : async () {
+
+    Cycles.add(10_000_000_000_000);
+    let porky = await Lib.PiggyBank(Alice.credit, 1_000_000_000);
+
+    assert (0 == (await porky.getSavings()));
+
+    Cycles.add(1_000_000);
+    await porky.deposit();
+    assert (1_000_000 == (await porky.getSavings()));
+
+    await porky.withdraw(500_000);
+    assert (500_000 == (await porky.getSavings()));
+
+    await porky.withdraw(500_000);
+    assert (0 == (await porky.getSavings()));
+
+    Cycles.add(2_000_000_000);
+    await porky.deposit();
+    let refund = Cycles.refunded();
+    assert (1_000_000_000 == refund);
+    assert (1_000_000_000 == (await porky.getSavings()));
+
+  };
+
+  // Callback for accepting cycles from PiggyBank
+  public func credit() : async () {
+    let available = Cycles.available();
+    let accepted = Cycles.accept(available);
+    assert (accepted == available);
+  }
+
+}
+```
+
+让我们剖析`Alice`的代码：
+
+`Alice`将`PiggyBank`的`actor`类作为库导入，因此她可以按需创建新的`PiggyBank`的`actor`。
+
+大部分操作发生在`Alice`的`test()`函数中：
+
+`Alice`通过调用`Cycles.add(10_000_000_000_000)`将自己的`10_000_000_000_000`个单位的燃料专用于运行储钱罐，然后创建`PiggyBank`的新实例`porky`之前，传递回调`Alice.credit`和容量`(1_000_000_000)`。通过`Alice.credit`指定`Alice`作为提款的受益人。这`10_000_000_000_000`个单位的燃料，减去一小笔安装费，将记入`pigky`的余额，而无需通过`pigky`初始化代码进行任何进一步的操作。你可以把它想象成一个电动存钱罐，它消耗自己的资源。由于构建`PiggyBank`是异步的，`Alice`需要等待结果。
+
+创建`porky`之后，她首先使用断言验证`porky.getSavings()`是否为零。
+
+`Alice`将她的`1_000_000`个单位的燃料`Cycles.add(1_000_000)`用于在下一次调用`porky.deposit()`时转移到`porky`。仅当对`porky.deposit()`的调用成功（它应该）时，才会从`Alice`的余额中扣除这些燃料。
+
+`Alice`现在提取了一半的金额，即`500_000`，并验证了`pigky`的储蓄减少了一半。`Alice`最终通过对`Alice.credit()`的回调来接收燃料，该回调在`porky.withdraw()`中启动。请注意，接收到的燃料正是在`pigky.withdraw()`中添加的燃料，在它调用其它`benifit`回调之前，即`Alice.credit`。
