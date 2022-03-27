@@ -2,11 +2,16 @@
 [项目介绍](../README.md)
 
 # 介绍
+
+-----
+
 - [新手](./introduction/for_first_timers.md)
 - [开发者](./introduction/for_developers.md)
 - [协议发烧友](./introduction/for_protocol_enthusiasts.md)
 
 # 快速开始
+
+-----
 
 - [准备工作](./quick_start/for_newcomers.md)
 - [获取免费的Cycles](./quick_start/claim_your_free_cycles.md)
@@ -16,6 +21,8 @@
 
 # 实例代码
 
+-----
+
 - [HelloWrold](./example_code/hello_example.md)
 - [官方实例仓库](./example_code/dfinity_examples.md)
 - [社区开源项目](./example_code/opensource_community_projects.md)
@@ -24,27 +31,11 @@
 
 # 开发文档
 
+----
+
 - [开始](./developer_docs/getting_started/introducing_the_sdk/install_upgrade_or_remove_software.md)
     - [介绍一下SDK](./developer_docs/getting_started/introducing_the_sdk/install_upgrade_or_remove_software.md)
         - [安装、升级、卸载](./developer_docs/getting_started/introducing_the_sdk/install_upgrade_or_remove_software.md)
-        - [版本更新](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_9_0.md)
-            - [0.9.0](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_9_0.md)
-            - [0.8.4](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_8_4.md)
-            - [0.8.3](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_8_3.md)
-            - [0.8.2](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_8_2.md)
-            - [0.8.1](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_8_1.md)
-            - [0.8.0](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_8_0.md)
-            - [0.7.7](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_7_7.md)
-            - [0.7.2](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_7_2.md)
-            - [0.7.1](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_7_1.md)
-            - [0.7.0](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_7_0.md)
-            - [0.6.26](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_6.26.md)
-            - [0.6.25](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_6.25.md)
-            - [0.6.24](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_6.24.md)
-            - [0.6.23](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_6.23.md)
-            - [0.6.22](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_6.22.md)
-            - [0.6.21](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_6.21.md)
-            - [0.6.20](./developer_docs/getting_started/introducing_the_sdk/release_notes/0_6.20.md)
     - [DFX是什么](./developer_docs/getting_started/introducing_dfx/dfx_commands.md)
         - [DFX命令](./developer_docs/getting_started/introducing_dfx/dfx_commands.md)
         - [DFX环境变量](./developer_docs/getting_started/introducing_dfx/dfx_environment_variables.md)
@@ -113,6 +104,8 @@
                 - [Candid标准](./developer_docs/building_on_the_internet_computer/explore_our_languages/candid/reference/candid_specification.md)
                 - [Candid的Rust库](./developer_docs/building_on_the_internet_computer/explore_our_languages/candid/reference/candid_rust_crate.md)
 
+
+
     - [Internet Identity](./developer_docs/building_on_the_internet_computer/introducing_the_internet_identity/what_is_internet_identity.md)
         - [Internet Identity是什么](./developer_docs/building_on_the_internet_computer/introducing_the_internet_identity/what_is_internet_identity.md)
         - [如何使用Internet Identity](./developer_docs/building_on_the_internet_computer/introducing_the_internet_identity/how_to_use_the_internet_identity.md)
@@ -121,8 +114,15 @@
         - [添加前端资源](./developer_docs/building_on_the_internet_computer/frontend_development/add_frontend_assets.md)
         - [自定义前端](./developer_docs/building_on_the_internet_computer/frontend_development/customize_the_frontend.md)
         - [添加样式表](./developer_docs/building_on_the_internet_computer/frontend_development/add_a_stylesheet.md)
+    - [安全最佳实践](./developer_docs/building_on_the_internet_computer/security_best_practies/introduction.md)
+        - [介绍](./developer_docs/building_on_the_internet_computer/security_best_practies/introduction.md)
+        - [通用安全最佳实践](./developer_docs/building_on_the_internet_computer/security_best_practies/general_security_best_practices.md)
+        - [Web应用开发安全最佳实践](./developer_docs/building_on_the_internet_computer/security_best_practies/web_app_development_security_best_practices.md)
+        - [Rust罐头开发安全最佳实践](./developer_docs/building_on_the_internet_computer/security_best_practies/rust_canister_development_security_best_practices.md)
 
 # 协议文档
+------
+
 
 - [概念](./protocol_docs/conceptes/init.md)
     - [Internet Computer是什么](./protocol_docs/conceptes/what_is_the_internet_computer.md)
@@ -136,6 +136,8 @@
     - [比特币集成](./protocol_docs/conceptes/bitcoin_integration.md)
 
 # 通用文档
+------
+
 
 - [自治](./general_docs/overview_of_selfcustody/choosing_selfcustody_for_digital_assets.md)
     - [为数字代币选择自治](./general_docs/overview_of_selfcustody/choosing_selfcustody_for_digital_assets.md)
@@ -145,6 +147,8 @@
     - [NSS App快速手册](./general_docs/overview_of_the_nns_app/nns_app_quick_start.md)
 
 # 一些开发资源
+
+------
 
 - [开发者视频](./additional_resources/developer_videos/internet_identity.md)
     - [Internet Identity](./additional_resources/developer_videos/internet_identity.md)
@@ -172,11 +176,15 @@
 - [计算和存储花费](./additional_resources/computation_and_storage_costs.md)
 
 # 社区
+------
+
 
 - [Discord](./community/developer_discord.md)
 - [Forum](./community/developer_forum.md)
 
 # Motoko基础库
+
+------
 
 - [Array](./motoko_base_library/array.md)
 - [AssocList](./motoko_base_library/array.md)
@@ -225,6 +233,9 @@
 
 # 经济集成
 
+------
+
+
 - [Rosetta API文档](./finalcial_integration/rosetta_api_documentation/transfer_icp.md)
     - [发送ICP](./finalcial_integration/rosetta_api_documentation/transfer_icp.md)
     - [神经元生命周期](./finalcial_integration/rosetta_api_documentation/intoduction_neuron_lifecycle.md)
@@ -234,7 +245,6 @@
     - [在本地启动`ledger`罐头](./finalcial_integration/ledger_canister_smart_contract/setup_ledger_locally.md)
     - [部署你自己的代币](./finalcial_integration/ledger_canister_smart_contract/deploy_your_own_token.md)
     - [`ledger`规范](./finalcial_integration/ledger_canister_smart_contract/ledger_specification.md)
-
 
 ------
 
